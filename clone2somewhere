@@ -1,0 +1,130 @@
+#!/bin/bash
+
+# 帮助{{{
+help(){
+		echo "Usage: `basename $0 <git_repository_url> [target_directory]`"
+		echo "Example: `basename $0` git_url "
+		exit 0
+}
+# }}}
+# 初始化{{{
+# <++>
+init(){
+		# 脚本在发生错误时立即退出。
+		set -e 
+		#使用未定义的变量时退出。
+		set -u 
+		# 确保管道中任何命令失败都会导致脚本退出。
+		set -o pipefail
+		# 检测操作系统是否支持
+		check_os_suport
+		# 检查依赖
+		check_depen
+		# 创建日志文件
+		if [ ! -f "$LOG_FILE" ]; then
+				touch "$LOG_FILE"
+		fi
+}
+# }}}
+# 参数解析{{{
+# <++>
+get_opts(){
+		# 参数
+		GIT_URL="$1"          # Git 仓库地址
+		TARGET_DIR=${2:-~/tools}       # 目标目录
+		# 校验入参个数
+		if [ $# -lt 1 ]; then
+				help
+		fi
+}
+
+is_option(){
+		[[ $OPTARG == -* ]]
+}
+
+#}}}
+# 检查操作系统是否支持{{{
+check_os_suport(){
+		source /etc/os-release
+		case $ID in
+				centos | ubuntu | debian | kali | arch)
+						;;
+				*)
+						echo "Error: $ID is not supported."
+						exit 1
+		esac
+}
+# }}}
+# 检测依赖软件包{{{
+# <++>
+DEPENS=("ls")
+check_depen(){
+		for c in ${DEPENS[@]}; do
+				if has_cmd $c ; then
+						echo "Error: $c is not installed."
+						exit 1
+				fi 
+		done
+}
+# }}}
+# 是否存在某个命令{{{
+has_cmd () {
+		[ command -v $1 >/dev/null 2>&1 -gt 0 ]
+}
+# }}}
+# 日志{{{
+LOG_FILE="$(dirname $0)/.$(basename $0).log"
+log() {
+		if [ $# -eq 1 ];then
+				local message="$1"
+				local level="INFO"
+		else
+				local level="$1"
+				local message="$2"
+		fi
+		echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message" | tee -a "$LOG_FILE"
+}
+# }}}
+
+# 用户定义命令
+run(){
+		# 校验 BASE_DIR 是否存在
+		if [ ! -d `realpath $BASE_DIR` ]; then
+				log ERROR "The base directory '$BASE_DIR' does not exist. Please configure it properly."
+		fi
+		# 校验目标目录是否存在
+		if [ ! -d `realpath $TARGET_DIR` ]; then
+				log ERROR "The target directory '$TARGET_DIR' does not exist."
+		fi
+		# 解析 Git 仓库名
+		REPO_NAME=$(basename "$GIT_URL" .git)
+		# 克隆仓库到 BASE_DIR
+		CLONE_PATH="$BASE_DIR/$REPO_NAME"
+		if [ -d "$CLONE_PATH" ]; then
+				echo "The repository directory '$CLONE_PATH' already exists. skip clone"
+		else
+				echo "Cloning repository '$GIT_URL' to '$CLONE_PATH'..."
+				git clone "$GIT_URL" `realpath $CLONE_PATH` || log ERROR "Failed to clone the repository."
+		fi
+		# 创建软连接到目标目录
+		LINK_PATH="`realpath $TARGET_DIR`/$REPO_NAME"
+		if [ -e "$LINK_PATH" ]; then
+				log ERROR "The link path '$LINK_PATH' already exists."
+		fi
+		echo "Creating symbolic link '$LINK_PATH' -> '$CLONE_PATH'..."
+		ln -s `realpath $CLONE_PATH` $LINK_PATH || log ERROR "Failed to create symbolic link."
+		echo "Operation completed successfully!"
+		exit 0
+}
+
+# 脚本配置的环境变量目录
+BASE_DIR=~/git
+DEFAULT_TARGET_DIR="~/tools"   # 默认目标目录
+
+main(){
+		init 
+		get_opts "$@"
+		run "$@"
+}
+
+main "$@"

@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# description:
+# 	用于v2raya,快速设置代理
+# 	参数1: 代理服务器
+# 	参数2: 代理端口
+
+if [ -z "$1" ]; then
+		proxy_server='socks5://127.0.0.1'
+else
+		proxy_server=$1
+fi
+
+
+if [[ -z "$2" ]]; then
+		socks5_proxy_port='20170'
+else 
+		socks5_proxy_port=$2
+fi
+
+echo $proxy_server:$socks5_proxy_port	
+
+# 设置代理
+export https_proxy="${proxy_server}:${socks5_proxy_port}"
+export http_proxy="${proxy_server}:${socks5_proxy_port}"
+export all_proxy="${proxy_server}:${socks5_proxy_port}"

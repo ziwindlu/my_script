@@ -1,0 +1,158 @@
+#!/bin/bash
+
+# eazy to connect ssh server
+
+# 默认参数值
+username="root"
+port="22"
+identity_file="$HOME/.ssh/id_ed25519.pub"
+use_kitty="true"
+host_one="192.168.0"
+host_two="192.168"
+ssh_key="$HOME/.ssh/id_ed25519"
+
+# todo 
+# [x] 支持ssh2 -ik 等操作
+# [x] 修改默认的公钥
+# [  ] 支持ssh的命令操作
+
+# 函数：显示帮助信息
+function show_help() {
+echo "用法："
+echo "  ssh2 [选项] host"
+echo "选项："
+echo "  -i  公钥文件(指定了则会上传公钥到服务器)"
+echo "  -k, --kitten 	 使用kitty终端"
+echo "  -h, --help     显示帮助信息"
+echo "  -u, --username 指定用户名（默认为root,添加了此选项不填则为当前用户）"
+echo "  -p, --port     指定端口号"
+echo "说明："
+echo "  host 为主机名 例如"
+echo "       ssh2 23 连接192.168.3.23"
+echo "       ssh2 4.23 连接192.168.4.23"
+echo "       ssh2 193.77.4.23 连接193.77.4.23"
+}
+
+# 处理命令行参数
+while [[ $# -gt 0 ]]; do
+		case "$1" in
+		-h|--help)
+				show_help
+				exit 0
+				;;
+		# 使用默认公钥和kitty连接
+		# -ik|-ki)
+		# 		shift
+		# 		continue
+		# 		;;
+		-i)
+				shift
+				# -i后跟-相关参数
+				if [[ "$1" =~ ^-.* ]]; then
+						identity_file="$ssh_key"
+						continue
+						# -i后跟host
+				elif [[ $1 =~ ^[0-9]+(\.[0-9])*$ ]];then
+						continue
+				else
+						if [[ -a $1 ]];then
+								identity_file="$1"
+						else
+								echo $1 "不存在,将使用默认公钥" $ssh_key
+								identity_file="$ssh_key"
+						fi
+				fi
+				;;
+		-k)
+				shift
+				use_kitty="true"
+				if [[ "$1" =~ ^-.* ]]; then
+						continue
+				fi
+				continue
+				;;
+		-u|--username)
+				shift
+				if [[ "$1" =~ ^-.* ]]; then
+						continue
+				elif [[ $1 =~ ^[0-9]+(\.[0-9])*$ ]];then
+						continue
+				else
+						username="$1"
+				fi
+				;;
+		-p|--port)
+				shift
+				if [[ "$1" =~ ^-.* ]]; then
+						continue
+				fi
+				port="$1"
+				;;
+		*)
+				IFS="@"
+				arr=($1)
+				count=${#arr[@]}
+				if [[ "$count" -eq 2 ]]; then
+						username="${arr[0]}"
+						ip="${arr[1]}"
+				else
+						ip=$1
+				fi
+				unset IFS
+				# 使用IFS变量设置分隔符为"."
+				IFS="."
+				# 将字符串分割为数组
+				arr=($ip)
+				# 恢复IFS变量的默认值
+				unset IFS
+				# 获取数组的长度
+				count=${#arr[@]}
+				if [[ "$count" -eq 1 ]]; then
+						host=$host_one"."$ip
+				elif [[ "$count" -eq 2 ]];then
+						host=$host_two"."$ip
+				elif [[ "$count" -eq 4 ]];then
+						host=$ip
+				else
+						echo "未知选项: $1"
+						show_help
+						exit 1
+				fi
+				esac
+				shift
+		done
+
+		# 输出参数值
+		# echo "username：$username"
+		# echo "port：$port"
+		# echo "公钥：$identity_file"
+		# echo "host：$host"
+
+		if [[ $host = "192.168" ]];then
+				show_help
+				exit 1
+		fi
+
+		# 是否上传公钥
+		if [[ -n "$identity_file"  ]];then
+				# 只能这样写，不然识别不到~
+				if test -e `eval echo $identity_file` ;then
+						ssh-copy-id -i $identity_file -p $port "$username@$host" 
+				else
+						echo "文件不存在"
+						exit 1
+				fi
+		fi
+		# 是否使用kitty
+		if [[ $use_kitty = "true" ]];then
+				if command -v "kitty" >/dev/null 2>&1; then
+						echo "使用kitty"
+						kitty +kitten ssh "$username@$host" -p $port
+				else 
+						echo "未发现kitty"
+				fi
+		else
+				# 连接ssh
+				echo "ssh "$username@$host" -p $port"
+				ssh "$username@$host" -p $port
+		fi

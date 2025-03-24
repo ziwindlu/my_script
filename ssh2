@@ -1,0 +1,196 @@
+#!/bin/python3
+import os
+import shutil
+
+final_cmd = 'ssh '
+final_ssh_connect = '{}@{}'
+ssh_level0 = '192.168.0.'
+ssh_level1 = '192.168.'
+ssh_level2 = '10.'
+default_username = ''
+is_default_use_kitty = True
+use_identity = False
+default_identity_root = '~'
+default_identity = '.ssh/id_ed25519.pub'
+kitty_term = "xterm-kitty"
+
+
+def get_abs_path(p_root, p, p_root_default=None, p_default=None):
+    """
+    获取绝对路径，有默认值
+    p_root: 根目录
+    p: 路径
+    p_root_default
+    p_default
+    return 返回一个绝对路径
+    """
+
+    def jj(r, rd, p2):
+        if os.path.exists(os.path.join(r, p2)):
+            return os.path.join(r, p2)
+        elif os.path.exists(os.path.join(rd, p2)):
+            return os.path.join(rd, p2)
+        else:
+            return None
+
+    def gp(p1, pd):
+        if p1 and os.path.exists(p1):
+            return p1
+        elif pd and os.path.exists(pd):
+            return pd
+        else:
+            return None
+
+    import os
+    p_root_default = '' if p_root_default is None else os.path.expanduser(p_root_default)
+    p_default = '' if p_default is None else os.path.expanduser(p_default)
+    p = '' if p is None else os.path.expanduser(p)
+    p_root = '' if p_root is None else os.path.expanduser(p_root)
+    p_default = jj(p_root, p_root_default, p_default)
+    if not os.path.exists(p_root_default) and not os.path.exists(p_default if p_default else ''):
+        if os.path.abspath(p):
+            return p if os.path.exists(p) else None
+        else:
+            if os.path.exists(p_root):
+                rp = os.path.join(p_root, p)
+                return rp if os.path.exists(rp) else None
+            else:
+                return None
+    # 获取默认路径的绝对路径
+    abs_p_default = os.path.abspath(p_default)
+    abs_p = gp(p if os.path.isabs(p) else jj(p_root, p_root_default, p), abs_p_default)
+    return abs_p if abs_p is not None else abs_p_default
+
+
+def get_parser():
+    import argparse
+    parser = argparse.ArgumentParser(description='quick ssh')
+    global default_identity
+    global default_identity_root
+    global use_identity
+    if use_identity and len(default_identity) > 0:
+        default_identity = get_abs_path(default_identity_root, default_identity)
+    else:
+        default_identity = ''
+    parser.add_argument('-ui', '--upload-identity', nargs='?', type=str, help='上传公钥',
+                        default=default_identity)
+    parser.add_argument('-u', '--user', help='指定用户名', type=str, default='root')
+    parser.add_argument('-ki', '--kitty', action="store_true", help='使用kitty', default=is_default_use_kitty)
+    parser.add_argument('-ku', '--kitty-and-upload-identity', nargs='?', type=str,
+                        help='使用kitty并上传公钥', default=default_identity)
+    return parser.parse_known_args()
+
+
+def get_real_url_ipv4(ip):
+    c = ip.count('.')
+    if c == 3:
+        return ip
+    elif c == 2:
+        return ssh_level2 + ip
+    elif c == 1:
+        return ssh_level1 + ip
+    elif c == 0:
+        return ssh_level0 + ip
+    else:
+        return None
+
+
+def get_real_ipv4_ip(ssh_connect):
+    if '@' in ssh_connect:
+        sp = ssh_connect.split('@')
+        if len(sp) == 2:
+            return get_real_url_ipv4(sp[1])
+        else:
+            return None
+    else:
+        return get_real_url_ipv4(ssh_connect)
+
+
+def get_username(ssh_connect):
+    if '@' in ssh_connect:
+        u = ssh_connect.split('@')[0]
+        if len(u) > 0:
+            return u
+        else:
+            return None
+    else:
+        return None
+
+
+def get_connect(connect_str):
+    if not connect_str.replace('.', '').isdigit():
+        return connect_str
+    global default_username
+    username = get_username(connect_str) if get_username(connect_str) else default_username
+    host = get_real_ipv4_ip(connect_str)
+    if host is None:
+        raise Exception()
+    return final_ssh_connect.format(username, host)
+
+
+def get_and_set_ssh_connect(arg):
+    ssh_port = 22
+    p_flag = False
+    port_flag = False
+    if '-' not in arg[0]:
+        arg[0] = get_connect(arg[0])
+        return arg[0], ssh_port
+    # 如果other为1使用enumerate时会报错
+    if len(other) == 1:
+        import re
+        m = re.match(r'[a-zA-Z]', other[0])
+        if m:
+            return other[0], -1
+    else:
+        for i, p in enumerate(other, 0):
+            if port_flag:
+                ssh_port = p
+                port_flag = False
+            if '-p' in p:
+                port_flag = True
+            if '-' in p:
+                continue
+            else:
+                option = other[i - 1][1:]
+                if p_flag or option in '46AaCfGgKkMNnqsTtVvXxYy':
+                    # TODO: 使用了ssh config, 后面要校验
+                    other[i] = get_connect(p)
+                    return other[i], ssh_port
+                else:
+                    if i + 1 >= len(other):
+                        print("ssh destination not found")
+                        exit(-1)
+                    else:
+                        c = other[i + 1]
+                        if '-' not in c:
+                            p_flag = True
+
+
+if __name__ == '__main__':
+    args, other = get_parser()
+    if len(other) == 0:
+        print("ssh destination not found")
+        exit(-1)
+    if args.kitty_and_upload_identity and len(args.kitty_and_upload_identity) > 0:
+        args.kitty = True
+        args.upload_identity = args.kitty_and_upload_identity
+    if args.kitty:
+        # 判断kitty合法性
+        if shutil.which('kitty') and os.environ.get("TERM") == kitty_term:
+            final_cmd = 'kitty +kitten ' + final_cmd
+        else:
+            print("you have not kitty :)")
+    default_username = args.user
+    connect, port = get_and_set_ssh_connect(other)
+    if args.upload_identity:
+        if get_abs_path(default_identity_root, args.upload_identity):
+            if port == -1:
+                ssh_copy_id_cmd = f'ssh-copy-id -i {args.upload_identity} {connect}'
+            else:
+                ssh_copy_id_cmd = f'ssh-copy-id -i {args.upload_identity} -p {port} {connect}'
+            os.system(ssh_copy_id_cmd)
+    # print(args, other)
+    # 构造最终命令
+    final_cmd += " ".join(other)
+    print(final_cmd)
+    os.system(final_cmd)

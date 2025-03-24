@@ -1,0 +1,4 @@
+#!/bin/bash
+# just clean pacman undependence package
+lzf
+sudo pacman -R $(sudo pacman -Qdtq)

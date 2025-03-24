@@ -1,0 +1,8 @@
+#!/bin/bash
+
+DownloadPath=~/Downloads
+AppImagePath=~/linux_appimage
+mv $DownloadPath/*.AppImage $AppImagePath
+mv $DownloadPath/*.appimage $AppImagePath
+chmod 755 -R $AppImagePath/*.AppImage
+chmod 755 -R $AppImagePath/*.appimage

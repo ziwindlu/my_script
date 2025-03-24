@@ -1,0 +1,143 @@
+#!/bin/bash
+
+# 帮助{{{
+# <++>
+help(){
+		echo "Usage: `basename $0` [source]"
+		echo "Example: `basename $0`"
+}
+# }}}
+# 初始化{{{
+# <++>
+init(){
+		# 脚本在发生错误时立即退出。
+		set -e 
+		#使用未定义的变量时退出。
+		set -u 
+		# 确保管道中任何命令失败都会导致脚本退出。
+		set -o pipefail
+		# 检测操作系统是否支持
+		check_os_suport
+		# 检查依赖
+		check_depen
+		# 创建日志文件
+		if [ ! -f "$LOG_FILE" ]; then
+				touch "$LOG_FILE"
+		fi
+}
+# }}}
+# 参数解析{{{
+# <++>
+get_opts(){
+		while getopts "ab:c::" opt; do
+				case $opt in
+						# a)
+								# flag_a=true ;;
+						# b)
+								#     value_b=$OPTARG ;;
+						# c)
+								#     if is_option $OPTARG; then
+								#         value_c="default"
+								#         ((OPTIND--))
+								#     else
+								#         value_c=$OPTARG
+								#     fi
+								#     ;;
+						*)
+								echo "Unknown option"
+								exit 1
+								;;
+				esac
+				# 获得没有被解析的内容
+				shift $((OPTIND - 1))
+		done
+}
+
+is_option(){
+		[[ $OPTARG == -* ]]
+}
+
+#}}}
+# 检查操作系统是否支持{{{
+check_os_suport(){
+		source /etc/os-release
+		case $ID in
+				centos | ubuntu | debian | kali | arch)
+						;;
+				*)
+						echo "Error: $ID is not supported."
+						exit 1
+		esac
+}
+# }}}
+# 检测依赖软件包{{{
+# <++>
+DEPENS=("ls")
+check_depen(){
+		for c in ${DEPENS[@]}; do
+				if has_cmd $c ; then
+						echo "Error: $c is not installed."
+						exit 1
+				fi 
+		done
+}
+# }}}
+# 是否存在某个命令{{{
+has_cmd () {
+		[ command -v $1 >/dev/null 2>&1 -gt 0 ]
+}
+# }}}
+# 日志{{{
+LOG_FILE="$(dirname $0)/.$(basename $0).log"
+log() {
+		if [ $# -eq 1 ];then
+				local message="$1"
+				local level="INFO"
+		else
+				local level="$1"
+				local message="$2"
+		fi
+		echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message" | tee -a "$LOG_FILE"
+}
+# }}}
+
+# 用户定义命令
+run(){
+		# 检查 application_path 是否有效
+		if [ ! -d "$application_path" ]; then
+				log ERROR "$application_path 目录不存在或无效。" 
+				exit 1
+		fi
+		# 处理 .desktop 文件
+		for desktop_file in "$application_path"/*.desktop; do
+				# 检查文件是否存在
+				if [ -f "$desktop_file" ]; then
+						# 获取目标文件路径
+						target_file="/usr/share/applications/$(basename "$desktop_file")"
+						# 如果目标文件已存在，记录日志并覆盖
+						if [ -f "$target_file" ]; then
+								log INFO "覆盖文件: $target_file" 
+						fi
+						# 执行文件复制操作
+						sudo cp -f "$desktop_file" "$target_file"
+						# 确认复制成功
+						if [ $? -eq 0 ]; then
+								log INFO "已复制 $desktop_file 到 $target_file" 
+						else
+								log ERROR "无法复制 $desktop_file 到 $target_file" 
+						fi
+				fi
+		done
+		exit 0
+}
+
+# 默认的application_path
+application_path=${1:-$HOME/applications_desktop}
+
+main(){
+		init 
+		get_opts "$@"
+		run "$@"
+}
+
+main "$@"
